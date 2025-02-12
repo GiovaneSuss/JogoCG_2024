@@ -44,29 +44,92 @@ function main(){
   gl.bindBuffer(gl.ARRAY_BUFFER,colorBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorData), gl.STATIC_DRAW);
 
-  let tx_step = 0.02;
-  let w_step = 0.02;
-  let w2_step = 0.01;
-  let rotation = 1.0;
-  let tx = 1.0
-  let ty = 1.0
-  let ty2 = 1.0
+  let obstacles = [];
+
+    // Função para criar obstáculos (triângulos)
+    function createObstacle() {
+        // Definindo vértices do triângulo
+        let obstacleVertices = new Float32Array([
+            -3.0, -0.5, 1,        // Vértice inferior esquerdo mais próximo
+            1.0, -0.5, 1,        // Vértice inferior direito mais próximo
+            0, -0.5,  -30.0,     // Vértice superior esquerdo distante
+  
+            3.0, -0.5, 1,        // Vértice inferior direito mais próximo
+            0.0, -0.5, 1,        // Vértice superior direito distante
+            0, -0.5, -30.0  // Topo
+        ]);
+
+        // Definindo cores aleatórias para o triângulo
+        let obstacleColors = new Float32Array([
+            Math.random(), Math.random(), Math.random(),
+            Math.random(), Math.random(), Math.random(),
+            Math.random(), Math.random(), Math.random(),
+            
+            Math.random(), Math.random(), Math.random(),
+            Math.random(), Math.random(), Math.random(),
+            Math.random(), Math.random(), Math.random()
+        ]);
+
+        // Criando buffers para os obstáculos
+        let obstaclePositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, obstaclePositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, obstacleVertices, gl.STATIC_DRAW);
+
+        let obstacleColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, obstacleColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, obstacleColors, gl.STATIC_DRAW);
+
+        // Adicionando ao array de obstáculos
+        const possiblePositionsX = [-1.5, 0, 1.5]; 
+        let targetX = possiblePositionsX[Math.floor(Math.random() * possiblePositionsX.length)];
+
+        obstacles.push({
+            positionBuffer: obstaclePositionBuffer,
+            colorBuffer: obstacleColorBuffer,
+            x: 0,  // Sempre começa no meio
+            targetX: targetX, // Posição final aleatória
+            z: -25 // Começa distante
+        });
+    }
+
+    // Cria inicialmente alguns obstáculos
+    for (let i = 0; i < 5; i++) {
+        createObstacle();
+    }
 
   let cubePositionX = 0.0; // Posição inicial do cubo no eixo X
 
+  const possiblePositionsX = [-1.5, 0, 1.5];
+  let currentIndex = 1; // Começa no meio
+
   window.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowLeft') {
-          cubePositionX -= 0.1; // Move o cubo para a esquerda
-      } else if (event.key === 'ArrowRight') {
-          cubePositionX += 0.1; // Move o cubo para a direita
+      if (event.key === 'ArrowLeft' && currentIndex > 0) {
+          currentIndex--;
+      } else if (event.key === 'ArrowRight' && currentIndex < possiblePositionsX.length - 1) {
+          currentIndex++;
       }
+      cubePositionX = possiblePositionsX[currentIndex]; 
   });
+
+  let gameOver = false; // Variável para impedir repetição do alerta e recarregar a página
+
+  function checkCollision(obstacle) {
+      let cubeSize = 0.5; 
+      let obstacleSize = 0.5; 
+      let zThreshold = 1.0; 
+
+      let xCollision = Math.abs(cubePositionX - obstacle.x) < (cubeSize + obstacleSize);
+      let zCollision = Math.abs(obstacle.z - 0) < zThreshold; 
+
+      return xCollision && zCollision;
+  }
   
   function drawCube() {
+      if (gameOver) return;
       gl.clearColor(0.0, 0.0, 0.0, 1.0); // Define o fundo como preto
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   
-      let P_ref = [0.0, 1.0, 1.0]; // Alinha a referência da câmera
+      let P_ref = [0.0, 1, 1]; // Alinha a referência da câmera
       let V = [0.0, 1.0, 0.0];
   
       let xw_min = -4.0;
@@ -135,10 +198,63 @@ function main(){
   
       gl.uniformMatrix4fv(matrixUniformLocation, false, cubeFinalMatrix); // Aplica a movimentação do cubo
       gl.drawArrays(gl.TRIANGLES, 0, vertexData.length / 3);
-  
+      
+      obstacles.forEach((obstacle, index) => {
+        obstacle.z += 0.1;
+    
+        if (checkCollision(obstacle)) {
+          gameOver = true; // Impede que o alerta dispare novamente
+          setTimeout(() => {
+              alert("Game Over!");
+              location.reload(); // Agora o reload só ocorre depois do alerta
+          }, 100); 
+        }
+
+        // Progressão do movimento: de 0 (longe) a 1 (perto)
+        let progress = (obstacle.z + 50) / 50; 
+
+        // Interpola o X do meio (0) para o destino final (targetX)
+        obstacle.x = obstacle.targetX * progress; 
+    
+        if (obstacle.z > 5) { // Se passou do jogador, remove e cria outro
+            obstacles.splice(index, 1);
+            createObstacle();
+        } else {
+            let scaleFactor = Math.max(0.0, 1 - obstacle.z / -50); // Começa pequeno e cresce ao longo do eixo Z
+    
+            let obstacleMatrix = m4.identity();
+            obstacleMatrix = m4.translate(obstacleMatrix, obstacle.x, 0, obstacle.z);
+            obstacleMatrix = m4.scale(obstacleMatrix, scaleFactor, scaleFactor, scaleFactor); // Aplica o scale
+    
+            gl.bindBuffer(gl.ARRAY_BUFFER, obstacle.positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                -0.5, -0.5, 0,
+                 0.5, -0.5, 0,
+                 0.0,  0.5, 0,
+    
+                -0.5, -0.5, 0,
+                 0.5, -0.5, 0,
+                 0.0,  0.5, 0
+            ]), gl.STATIC_DRAW);
+    
+            gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(positionLocation);
+    
+            gl.bindBuffer(gl.ARRAY_BUFFER, obstacle.colorBuffer);
+            gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(colorLocation);
+    
+            let finalMatrix = m4.multiply(m4.multiply(ortographicMatrix, viewingMatrix), obstacleMatrix);
+            gl.uniformMatrix4fv(matrixUniformLocation, false, finalMatrix);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+    });
+
       // Requisitar próximo quadro
       requestAnimationFrame(drawCube);
   }  
+
+  
 
   drawCube();
 }
