@@ -8,5 +8,7 @@ body {
 }
 
 canvas {
-    border: 1px solid black;
+    background-image: url('deserto_teste.jpg');
+    background-size: cover;
+    background-position: center;
 }

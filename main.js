@@ -1,329 +1,531 @@
-function main(){
+function main() {
   const canvas = document.querySelector("#canvas");
   const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
 
   if (!gl) {
-      throw new Error('WebGL not supported');
+      throw new Error('WebGL não suportado');
   }
 
-  var vertexShaderSource = document.querySelector("#vertex-shader").text;
-  var fragmentShaderSource = document.querySelector("#fragment-shader").text;
-
-  var vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-  var fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
-
-  var program = createProgram(gl, vertexShader, fragmentShader);
-
+  // Compila shaders
+  const vertexShaderSource   = document.querySelector("#vertex-shader").text;
+  const fragmentShaderSource = document.querySelector("#fragment-shader").text;
+  const vertexShader   = createShader(gl, gl.VERTEX_SHADER,   vertexShaderSource);
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+  const program = createProgram(gl, vertexShader, fragmentShader);
   gl.useProgram(program);
 
+  // Ativa depth-test
   gl.enable(gl.DEPTH_TEST);
 
-  const positionBuffer = gl.createBuffer();
+  // --- Localizações de atributo ---
+  const positionLoc = gl.getAttribLocation(program, "position");
+  const colorLoc    = gl.getAttribLocation(program, "color");
+  const normalLoc   = gl.getAttribLocation(program, "normal");
 
-  const positionLocation = gl.getAttribLocation(program, `position`);
-  gl.enableVertexAttribArray(positionLocation);
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+  // --- Localizações de uniform ---
+  const uMVP_Location         = gl.getUniformLocation(program, "uMVP");
+  const uModelMatrix_Location = gl.getUniformLocation(program, "uModelMatrix");
+  const uLightPos_Location    = gl.getUniformLocation(program, "uLightPosition");
+  const uViewPos_Location     = gl.getUniformLocation(program, "uViewPosition");
+  const uShininess_Location   = gl.getUniformLocation(program, "uShininess");
 
-  const colorBuffer = gl.createBuffer();
+  // Configura luz e câmera
+  // Posição da luz no espaço de mundo
+  // "Olho" do observador = mesma da câmera
+  let cameraPos = [0.3, 1.5, 5.0];
+  gl.uniform3fv(uLightPos_Location, [0.0, 5.0, 5.0]);
+  // Brilho especular
+  gl.uniform1f(uShininess_Location, 50.0);
 
-  const colorLocation = gl.getAttribLocation(program, `color`);
-  gl.enableVertexAttribArray(colorLocation);
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+  // --- Buffers (GENÉRICOS) ---
+  // Em vez de um único par de buffers, teremos 3 pares: para "pos", "col", "normal".
+  // Mas vamos criar as funções "createBuffer" para facilitar.
 
-  const matrixUniformLocation = gl.getUniformLocation(program, `matrix`);
+  function createBuffer(data) {
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+      return buffer;
+  }
 
-  gl.clearColor(1.0, 1.0, 1.0, 1.0);
+  // Função que faz o binding de atributo
+  function bindAttrib(buffer, attribLocation, numComponents) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(attribLocation);
+      gl.vertexAttribPointer(
+          attribLocation,
+          numComponents,   // ex: 3 para (x,y,z)
+          gl.FLOAT,
+          false,
+          0,
+          0
+      );
+  }
 
-  let vertexData = setCubeVertices();
-  gl.bindBuffer(gl.ARRAY_BUFFER,positionBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+  // === 1) Dados do CUBO ===
+  let cubePositions = setCubeVertices();  // (já tinha)
+  let cubeColors    = setCubeColors();    // (já tinha)
+  let cubeNormals   = setCubeNormals();   // (NOVO) precisa definir normais do cubo
 
-  let colorData = setCubeColors();
-  gl.bindBuffer(gl.ARRAY_BUFFER,colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorData), gl.STATIC_DRAW);
+  // Cria buffers do cubo
+  const cubePosBuffer  = createBuffer(cubePositions);
+  const cubeColBuffer  = createBuffer(cubeColors);
+  const cubeNorBuffer  = createBuffer(cubeNormals);
 
+  const cubeNumVerts   = cubePositions.length / 3; // quantos vértices?
+
+  // === 2) Dados do CHÃO ===
+  let floorPositions = [
+      -3.0, -0.5,  1.0,
+       0.0, -0.5,  1.0,
+       0.0, -0.5, -30.0,
+
+       3.0, -0.5,  1.0,
+       0.0, -0.5,  1.0,
+       0.0, -0.5, -30.0,
+  ];
+  // Cores do chão (6 vértices)
+  let floorColors = [
+      // mesmo que antes, ou tome outra cor
+      1.0, 0.55, 0.0,
+      1.0, 0.65, 0.31,
+      0.96, 0.87, 0.70,
+
+      1.0, 0.55, 0.0,
+      1.0, 0.65, 0.31,
+      0.96, 0.87, 0.70,
+  ];
+  // Normais do chão (apontando para cima no eixo Y, pois é um plano "horizontal"):
+  // * CUIDADO se o triângulo está "deitado" ou "em pé". Aqui assumimos normal +Y.
+  let floorNormals = [
+      0,1,0,  0,1,0,  0,1,0,
+      0,1,0,  0,1,0,  0,1,0,
+  ];
+
+  const floorPosBuffer = createBuffer(floorPositions);
+  const floorColBuffer = createBuffer(floorColors);
+  const floorNorBuffer = createBuffer(floorNormals);
+  const floorNumVerts  = floorPositions.length / 3;
+
+  // === 3) Obstáculos (triângulos) ===
+  // Você cria e recria muita geometria no código (movendo etc.).
+  // Aqui simplificaremos: um “triângulo base” com normal. 
+  // Depois escalamos/rotacionamos via matriz.
+  // Ex: triângulo no plano XZ com normal (0,1,0) ou algo do tipo.
+
+  // Triângulo (duas vezes => 6 vértices) => um retângulo em shape de trapézio
+  // Mas vamos simplificar só para exibir a ideia
+  let obstacleBasePositions = [
+      -0.5, 0, 0,
+       0.5, 0, 0,
+       0.0, 1, 0,
+
+      -0.5, 0, 0,
+       0.5, 0, 0,
+       0.0, 1, 0,
+  ];
+  // ex: cores aleatórias => iremos setar ao criar
+  let obstacleBaseColors = [
+      1,0,0,  1,0,0,  1,0,0,
+      1,0,0,  1,0,0,  1,0,0,
+  ];
+  // Normal apontando +Z ou -Y… Depende de como vc está desenhando.
+  // Digamos (0,0,1) se o triângulo “fica na vertical”. Ajuste conforme sua geometria real.
+  let obstacleBaseNormals = [
+      0,0,1,  0,0,1,  0,0,1,
+      0,0,1,  0,0,1,  0,0,1,
+  ];
+
+  const obstaclePosBufferBase = createBuffer(obstacleBasePositions);
+  const obstacleColBufferBase = createBuffer(obstacleBaseColors);
+  const obstacleNorBufferBase = createBuffer(obstacleBaseNormals);
+  const obstacleNumVerts      = obstacleBasePositions.length / 3;
+
+  // Seu array "obstacles" permanece para controlar a posição z, x etc.
   let obstacles = [];
+  function createObstacle() {
+      const possiblePositionsX = [-1.5, 0, 1.5]; 
+      let targetX = possiblePositionsX[Math.floor(Math.random() * possiblePositionsX.length)];
+      
+      // Gere cores aleatórias
+      let r = Math.random(); 
+      let g = Math.random(); 
+      let b = Math.random();
 
-    // Função para criar obstáculos (triângulos)
-    function createObstacle() {
-        // Definindo vértices do triângulo
-        let obstacleVertices = new Float32Array([
-            -3.0, -0.5, 1,        // Vértice inferior esquerdo mais próximo
-            1.0, -0.5, 1,        // Vértice inferior direito mais próximo
-            0, -0.5,  -30.0,     // Vértice superior esquerdo distante
-  
-            3.0, -0.5, 1,        // Vértice inferior direito mais próximo
-            0.0, -0.5, 1,        // Vértice superior direito distante
-            0, -0.5, -30.0  // Topo
-        ]);
+      obstacles.push({
+          // reusamos buffers fixos, mas guardamos cor via uniform? 
+          // ou se quiser COR diferente, podemos mandar buffer? 
+          // Para simplicidade, guardamos aqui e "substituímos" no draw.
+          color: [r,g,b],
+          x: 0,
+          targetX: targetX * 1.5,
+          z: -25
+      });
+  }
 
-        // Definindo cores aleatórias para o triângulo
-        let obstacleColors = new Float32Array([
-            Math.random(), Math.random(), Math.random(),
-            Math.random(), Math.random(), Math.random(),
-            Math.random(), Math.random(), Math.random(),
-            
-            Math.random(), Math.random(), Math.random(),
-            Math.random(), Math.random(), Math.random(),
-            Math.random(), Math.random(), Math.random()
-        ]);
+  // Cria 2 obstáculos iniciais
+  for (let i=0; i<2; i++){
+      createObstacle();
+  }
 
-        // Criando buffers para os obstáculos
-        let obstaclePositionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, obstaclePositionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, obstacleVertices, gl.STATIC_DRAW);
-
-        let obstacleColorBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, obstacleColorBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, obstacleColors, gl.STATIC_DRAW);
-
-        // Adicionando ao array de obstáculos
-        const possiblePositionsX = [-1.5, 0, 1.5]; 
-        let targetX = possiblePositionsX[Math.floor(Math.random() * possiblePositionsX.length)];
-
-        obstacles.push({
-            positionBuffer: obstaclePositionBuffer,
-            colorBuffer: obstacleColorBuffer,
-            x: 0,  // Sempre começa no meio
-            targetX: targetX, // Posição final aleatória
-            z: -25 // Começa distante
-        });
-    }
-
-    // Cria inicialmente alguns obstáculos
-    for (let i = 0; i < 5; i++) {
-        createObstacle();
-    }
-
-  let cubePositionX = 0.0; // Posição inicial do cubo no eixo X
-
-  const possiblePositionsX = [-1.5, 0, 1.5];
-  let currentIndex = 1; // Começa no meio
-
+  // --- Interação para mover cubo ---
+  let cubePositionX = 0.0;
+  const possibleX = [-1.5, 0, 1.5];
+  let currentIndex = 1;
   window.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowLeft' && currentIndex > 0) {
-          currentIndex--;
-      } else if (event.key === 'ArrowRight' && currentIndex < possiblePositionsX.length - 1) {
-          currentIndex++;
-      }
-      cubePositionX = possiblePositionsX[currentIndex]; 
+      if (event.key === 'ArrowLeft'  && currentIndex>0)                 currentIndex--;
+      else if(event.key === 'ArrowRight' && currentIndex<possibleX.length-1) currentIndex++;
+      cubePositionX = possibleX[currentIndex];
   });
 
-  let gameOver = false; // Variável para impedir repetição do alerta e recarregar a página
+  let score = 0; 
+  let gameOver = false; 
 
-  function checkCollision(obstacle) {
-      let cubeSize = 0.5; 
-      let obstacleSize = 0.5; 
-      let zThreshold = 1.0; 
-
+  function checkCollision(obstacle){
+      // Lógica sua
+      let cubeSize=0.5, obstacleSize=0.5;
+      let zThreshold=1.0;
       let xCollision = Math.abs(cubePositionX - obstacle.x) < (cubeSize + obstacleSize);
-      let zCollision = Math.abs(obstacle.z - 0) < zThreshold; 
-
-      return xCollision && zCollision;
+      let zCollision = Math.abs(obstacle.z - 0) < zThreshold;
+      return (xCollision && zCollision);
   }
-  
-  function drawCube() {
-      if (gameOver) return;
-      gl.clearColor(0.0, 0.0, 0.0, 1.0); // Define o fundo como preto
+
+  // --- Matrizes de projeção e view ---
+  let xw_min = -4, xw_max=4, yw_min=-4, yw_max=4;
+  let z_near=-1, z_far=-10000;
+  let orthoMatrix = ortographicProjection(xw_min, xw_max, yw_min, yw_max, z_near, z_far);
+
+  // Câmera
+  let P_ref=[0,1,1], V=[0,1,0];
+  let viewMatrix = set3dViewingMatrix(cameraPos, P_ref, V);
+
+  // Função de desenho principal
+  function drawScene() {
+      if(gameOver) return;
+
+      // Atualiza pontuação
+      score += 0.015;
+      if(score>=60){
+          gameOver=true;
+          setTimeout(()=>{
+              alert("Parabéns! Você venceu!");
+              location.reload();
+          },100);
+          return;
+      }
+
+      // Limpa tela
+      gl.clearColor(0,0,0,0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  
-      let P_ref = [0.0, 1, 1]; // Alinha a referência da câmera
-      let V = [0.0, 1.0, 0.0];
-  
-      let xw_min = -4.0;
-      let xw_max = 4.0;
-      let yw_min = -4.0;
-      let yw_max = 4.0;
-      let z_near = -1.0;
-      let z_far = -10000.0; // Ajustando para maior profundidade
-  
-      // Renderizar o "chão" branco com convergência no horizonte
-      let floorVertices = new Float32Array([
-          -3.0, -0.5, 1,        // Vértice inferior esquerdo mais próximo
-           0.0, -0.5, 1,        // Vértice inferior direito mais próximo
-           0, -0.5,  -30.0,     // Vértice superior esquerdo distante
-  
-           3.0, -0.5, 1,        // Vértice inferior direito mais próximo
-           0.0, -0.5, 1,        // Vértice superior direito distante
-           0, -0.5, -30.0       // Vértice superior esquerdo distante
-      ]);
-  
-      let floorColors = new Float32Array([
-          1.0, 1.0, 1.0, // Branco
-          1.0, 1.0, 1.0, // Branco
-          1.0, 1.0, 1.0, // Branco
-          1.0, 1.0, 1.0, // Branco
-          1.0, 1.0, 1.0, // Branco
-          1.0, 1.0, 1.0  // Branco
-      ]);
-  
-      let floorPositionBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, floorPositionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, floorVertices, gl.STATIC_DRAW);
-      gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(positionLocation);
-  
-      let floorColorBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, floorColorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, floorColors, gl.STATIC_DRAW);
-      gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(colorLocation);
-  
-      // Renderizar o chão fixo
-      let floorMatrix = m4.identity(); // Chão sem movimentação
-      let viewingMatrix = set3dViewingMatrix([0.0, 1.5, 5.0], P_ref, V); // Posição da câmera
-      let ortographicMatrix = ortographicProjection(xw_min, xw_max, yw_min, yw_max, z_near, z_far);
-  
-      let floorFinalMatrix = m4.multiply(ortographicMatrix, viewingMatrix);
-      gl.uniformMatrix4fv(matrixUniformLocation, false, floorFinalMatrix); // Aplica apenas a visualização
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-  
-      // Atualizar os buffers para o cubo
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
-      gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(positionLocation);
-  
-      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorData), gl.STATIC_DRAW);
-      gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(colorLocation);
-  
-      // Renderizar o cubo com movimentação
-      let cubeMatrix = m4.identity();
-      cubeMatrix = m4.translate(cubeMatrix, cubePositionX, 0.0, 0.0); // Move o cubo no eixo X
-      let cubeFinalMatrix = m4.multiply(m4.multiply(ortographicMatrix, viewingMatrix), cubeMatrix);
-  
-      gl.uniformMatrix4fv(matrixUniformLocation, false, cubeFinalMatrix); // Aplica a movimentação do cubo
-      gl.drawArrays(gl.TRIANGLES, 0, vertexData.length / 3);
-      
-      obstacles.forEach((obstacle, index) => {
-        obstacle.z += 0.1;
-    
-        if (checkCollision(obstacle)) {
-          gameOver = true; // Impede que o alerta dispare novamente
-          setTimeout(() => {
-              alert("Game Over!");
-              location.reload(); // Agora o reload só ocorre depois do alerta
-          }, 100); 
-        }
 
-        // Progressão do movimento: de 0 (longe) a 1 (perto)
-        let progress = (obstacle.z + 50) / 50; 
+      // Monta a "viewProjection" = proj * view
+      let viewProj = m4.multiply(orthoMatrix, viewMatrix);
 
-        // Interpola o X do meio (0) para o destino final (targetX)
-        obstacle.x = obstacle.targetX * progress; 
-    
-        if (obstacle.z > 5) { // Se passou do jogador, remove e cria outro
-            obstacles.splice(index, 1);
-            createObstacle();
-        } else {
-            let scaleFactor = Math.max(0.0, 1 - obstacle.z / -50); // Começa pequeno e cresce ao longo do eixo Z
-    
-            let obstacleMatrix = m4.identity();
-            obstacleMatrix = m4.translate(obstacleMatrix, obstacle.x, 0, obstacle.z);
-            obstacleMatrix = m4.scale(obstacleMatrix, scaleFactor, scaleFactor, scaleFactor); // Aplica o scale
-    
-            gl.bindBuffer(gl.ARRAY_BUFFER, obstacle.positionBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-                -0.5, -0.5, 0,
-                 0.5, -0.5, 0,
-                 0.0,  0.5, 0,
-    
-                -0.5, -0.5, 0,
-                 0.5, -0.5, 0,
-                 0.0,  0.5, 0
-            ]), gl.STATIC_DRAW);
-    
-            gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(positionLocation);
-    
-            gl.bindBuffer(gl.ARRAY_BUFFER, obstacle.colorBuffer);
-            gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(colorLocation);
-    
-            let finalMatrix = m4.multiply(m4.multiply(ortographicMatrix, viewingMatrix), obstacleMatrix);
-            gl.uniformMatrix4fv(matrixUniformLocation, false, finalMatrix);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);
-        }
-    });
+      // == 1) Desenhar o CHÃO ==
+      // ModelMatrix para o chão = identidade
+      let floorModel = m4.identity();
+      // MVP
+      let floorMVP = m4.multiply(viewProj, floorModel);
 
-      // Requisitar próximo quadro
-      requestAnimationFrame(drawCube);
-  }  
+      // Envia pro shader
+      gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(floorMVP));
+      gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(floorModel));
 
-  
+      // Faz bind dos buffers
+      bindAttrib(floorPosBuffer, positionLoc, 3);
+      bindAttrib(floorColBuffer, colorLoc,    3);
+      bindAttrib(floorNorBuffer, normalLoc,   3);
 
-  drawCube();
+      // Desenha
+      gl.drawArrays(gl.TRIANGLES, 0, floorNumVerts);
+
+      // == 2) Desenhar o CUBO ==
+      // Montar modelMatrix do cubo
+      let cubeModel = m4.identity();
+      // Translada no eixo X
+      cubeModel = m4.translate(cubeModel, cubePositionX, 0.0, 0.0);
+
+      let cubeMVP = m4.multiply(viewProj, cubeModel);
+
+      gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(cubeMVP));
+      gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(cubeModel));
+
+      // Buffers do cubo
+      bindAttrib(cubePosBuffer, positionLoc, 3);
+      bindAttrib(cubeColBuffer, colorLoc,    3);
+      bindAttrib(cubeNorBuffer, normalLoc,   3);
+
+      // Desenha
+      gl.drawArrays(gl.TRIANGLES, 0, cubeNumVerts);
+
+      // == 3) Desenhar OBSTÁCULOS ==
+      obstacles.forEach((obs, index)=>{
+          obs.z += 0.1;  // avança em Z
+
+          // colisão?
+          if(checkCollision(obs)){
+              gameOver=true;
+              setTimeout(()=>{
+                  alert("Game Over! Score: " + Math.floor(score));
+                  location.reload();
+              },100);
+          }
+
+          // interpola X do obstáculo
+          let progress = (obs.z+50)/50; 
+          obs.x = progress*obs.targetX;
+
+          if(obs.z>5){ 
+              obstacles.splice(index,1);
+              createObstacle();
+          } else {
+              // Monta modelMatrix do obstáculo
+              let minZ=-25, maxZ=0;
+              let scaleFactor = (obs.z-minZ)/(maxZ-minZ);
+              
+              let obsModel = m4.identity();
+              obsModel = m4.translate(obsModel, obs.x, 0, obs.z);
+              obsModel = m4.scale(obsModel, scaleFactor, scaleFactor, scaleFactor);
+
+              let obsMVP = m4.multiply(viewProj, obsModel);
+
+              gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(obsMVP));
+              gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(obsModel));
+
+              // Precisamos alterar a cor? Uma forma simples é criar outro buffer de cor 
+              // a cada obstáculo, mas aqui faremos set de cor "uniform" – 
+              // ou vamos ignorar e usar color no buffer? 
+              // Para simplicidade, podemos re-criar o colorBufferBase do obstáculo
+              // com a cor do 'obs.color'. Exemplo:
+              let c = [];
+              for(let i=0; i<6; i++){
+                  c.push(obs.color[0],obs.color[1],obs.color[2]);
+              }
+              // Substitui dados do buffer base
+              gl.bindBuffer(gl.ARRAY_BUFFER, obstacleColBufferBase);
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(c), gl.STATIC_DRAW);
+
+              // Agora faz bind
+              bindAttrib(obstaclePosBufferBase, positionLoc, 3);
+              bindAttrib(obstacleColBufferBase, colorLoc,    3);
+              bindAttrib(obstacleNorBufferBase, normalLoc,   3);
+
+              // Desenha
+              gl.drawArrays(gl.TRIANGLES, 0, obstacleNumVerts);
+          }
+      });
+
+      // Atualiza pontuação na tela
+      const scoreElement = document.getElementById("score");
+      if(scoreElement){
+          scoreElement.textContent = "Pontuação: " + Math.floor(score);
+      }
+
+      requestAnimationFrame(drawScene);
+  }
+
+  drawScene();
 }
 
-function setCubeVertices(){
+function setCubeNormals(){
+  // Precisamos gerar as normais face por face.
+  // Exemplo (para um cubo simples):
+  // Para cada face, usar (0,0,1), (0,1,0), etc., repetindo 6 vezes por face.
+  // Se seu cubo é “decorado” (olhos, turbante etc.), 
+  // você terá que definir as normais manualmente nessas partes extras também.
+  // Abaixo, deixo só um exemplo para o paralelepípedo principal:
+  const norms = [];
+
+  // Front face (0,0,1) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(0,0,1);
+  }
+  // Left face (-1,0,0) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(-1,0,0);
+  }
+  // Back face (0,0,-1) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(0,0,-1);
+  }
+  // Right face (1,0,0) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(1,0,0);
+  }
+  // Top face (0,1,0) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(0,1,0);
+  }
+  // Bottom face (0,-1,0) - 6 vértices
+  for(let i=0; i<6; i++){
+    norms.push(0,-1,0);
+  }
+
+  // E assim por diante para olho/boca/turbante. 
+  // Cada triângulo que você desenha deve ter uma normal coerente.
+  // Como exemplo, se “olho” fica na frente, normal seria (0,0,1), etc.
+
+  return norms;
+}
+
+function setCubeVertices() {
   const vertexData = [
-    // Front
-    0.5, 0.5, 0.5,
-    0.5, -.5, 0.5,
-    -.5, 0.5, 0.5,
-    -.5, 0.5, 0.5,
-    0.5, -.5, 0.5,
-    -.5, -.5, 0.5,
+      // Cubo principal (rosto)
+      // Front face
+      0.5, 0.5, 0.5,
+      0.5, -0.5, 0.5,
+      -0.5, 0.5, 0.5,
+      -0.5, 0.5, 0.5,
+      0.5, -0.5, 0.5,
+      -0.5, -0.5, 0.5,
 
-    // Left
-    -.5, 0.5, 0.5,
-    -.5, -.5, 0.5,
-    -.5, 0.5, -.5,
-    -.5, 0.5, -.5,
-    -.5, -.5, 0.5,
-    -.5, -.5, -.5,
+      // Left face
+      -0.5, 0.5, 0.5,
+      -0.5, -0.5, 0.5,
+      -0.5, 0.5, -0.5,
+      -0.5, 0.5, -0.5,
+      -0.5, -0.5, 0.5,
+      -0.5, -0.5, -0.5,
 
-    // Back
-    -.5, 0.5, -.5,
-    -.5, -.5, -.5,
-    0.5, 0.5, -.5,
-    0.5, 0.5, -.5,
-    -.5, -.5, -.5,
-    0.5, -.5, -.5,
+      // Back face
+      -0.5, 0.5, -0.5,
+      -0.5, -0.5, -0.5,
+      0.5, 0.5, -0.5,
+      0.5, 0.5, -0.5,
+      -0.5, -0.5, -0.5,
+      0.5, -0.5, -0.5,
 
-    // Right
-    0.5, 0.5, -.5,
-    0.5, -.5, -.5,
-    0.5, 0.5, 0.5,
-    0.5, 0.5, 0.5,
-    0.5, -.5, 0.5,
-    0.5, -.5, -.5,
+      // Right face
+      0.5, 0.5, -0.5,
+      0.5, -0.5, -0.5,
+      0.5, 0.5, 0.5,
+      0.5, 0.5, 0.5,
+      0.5, -0.5, 0.5,
+      0.5, -0.5, -0.5,
 
-    // Top
-    0.5, 0.5, 0.5,
-    0.5, 0.5, -.5,
-    -.5, 0.5, 0.5,
-    -.5, 0.5, 0.5,
-    0.5, 0.5, -.5,
-    -.5, 0.5, -.5,
+      // Top face
+      0.5, 0.5, 0.5,
+      0.5, 0.5, -0.5,
+      -0.5, 0.5, 0.5,
+      -0.5, 0.5, 0.5,
+      0.5, 0.5, -0.5,
+      -0.5, 0.5, -0.5,
 
-    // Bottom
-    0.5, -.5, 0.5,
-    0.5, -.5, -.5,
-    -.5, -.5, 0.5,
-    -.5, -.5, 0.5,
-    0.5, -.5, -.5,
-    -.5, -.5, -.5,
+      // Bottom face
+      0.5, -0.5, 0.5,
+      0.5, -0.5, -0.5,
+      -0.5, -0.5, 0.5,
+      -0.5, -0.5, 0.5,
+      0.5, -0.5, -0.5,
+      -0.5, -0.5, -0.5,
+
+      // Olho esquerdo (um pequeno cubo)
+      -0.3, 0.3, 0.51,
+      -0.1, 0.3, 0.51,
+      -0.3, 0.1, 0.51,
+      -0.3, 0.1, 0.51,
+      -0.1, 0.3, 0.51,
+      -0.1, 0.1, 0.51,
+
+      // Olho direito (um pequeno cubo)
+      0.1, 0.3, 0.51,
+      0.3, 0.3, 0.51,
+      0.1, 0.1, 0.51,
+      0.1, 0.1, 0.51,
+      0.3, 0.3, 0.51,
+      0.3, 0.1, 0.51,
+
+      // Boca (um retângulo)
+      -0.3, -0.3, 0.51,
+      0.3, -0.3, 0.51,
+      -0.3, -0.5, 0.51,
+      -0.3, -0.5, 0.51,
+      0.3, -0.3, 0.51,
+      0.3, -0.5, 0.51,
+
+      // Nariz (um triângulo)
+      0.0, 0.0, 0.51,
+      -0.1, -0.2, 0.51,
+      0.1, -0.2, 0.51,
+
+      // Turbante (um retângulo curvado acima do cubo)
+        // Parte frontal do turbante
+        -0.6, 0.6, 0.5,
+         0.6, 0.6, 0.5,
+        -0.6, 0.5, 0.5,
+        -0.6, 0.5, 0.5,
+         0.6, 0.6, 0.5,
+         0.6, 0.5, 0.5,
+
+        // Parte traseira do turbante
+        -0.6, 0.6, -0.5,
+         0.6, 0.6, -0.5,
+        -0.6, 0.5, -0.5,
+        -0.6, 0.5, -0.5,
+         0.6, 0.6, -0.5,
+         0.6, 0.5, -0.5,
+
+        // Lado esquerdo do turbante
+        -0.6, 0.6, 0.5,
+        -0.6, 0.6, -0.5,
+        -0.6, 0.5, 0.5,
+        -0.6, 0.5, 0.5,
+        -0.6, 0.6, -0.5,
+        -0.6, 0.5, -0.5,
+
+        // Lado direito do turbante
+        0.6, 0.6, 0.5,
+        0.6, 0.6, -0.5,
+        0.6, 0.5, 0.5,
+        0.6, 0.5, 0.5,
+        0.6, 0.6, -0.5,
+        0.6, 0.5, -0.5,
+
+        // Topo do turbante
+        -0.6, 0.6, 0.5,
+         0.6, 0.6, 0.5,
+        -0.6, 0.6, -0.5,
+        -0.6, 0.6, -0.5,
+         0.6, 0.6, 0.5,
+         0.6, 0.6, -0.5,
+
   ];
   return vertexData;
 }
 
-function setCubeColors(){
-  function randomColor() {
-    return [Math.random(), Math.random(), Math.random()];
+function setCubeColors() {
+  const colorData = [];
+
+  // Cores para o cubo principal (rosto)
+  const faceColor = [1.0, 0.8, 0.6]; // Cor de pele
+  for (let i = 0; i < 36; i++) {
+      colorData.push(...faceColor);
   }
 
-  let colorData = [];
-  for (let face = 0; face < 6; face++) {
-    let faceColor = randomColor();
-    for (let vertex = 0; vertex < 6; vertex++) {
-        colorData.push(...faceColor);
-    }
+  // Cores para os olhos
+  const eyeColor = [0.0, 0.0, 0.0]; // Preto
+  for (let i = 0; i < 12; i++) {
+      colorData.push(...eyeColor);
   }
+
+  // Cores para a boca
+  const mouthColor = [1.0, 0.0, 0.0]; // Vermelho
+  for (let i = 0; i < 6; i++) {
+      colorData.push(...mouthColor);
+  }
+
+  // Cores para o nariz
+  const noseColor = [1.0, 0.5, 0.0]; // Laranja
+  for (let i = 0; i < 3; i++) {
+      colorData.push(...noseColor);
+  }
+  
+    // Cores para o turbante (azul, por exemplo)
+    const turbanColor = [0.0, 0.0, 1.0]; // Azul
+    for (let i = 0; i < 30; i++) { // 30 vértices para o turbante
+        colorData.push(...turbanColor);
+    }
+
   return colorData;
 }
 

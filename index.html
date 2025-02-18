@@ -1,39 +1,103 @@
-<!DOCTYPE <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>WebGL</title>
+    <title>WebGL com Iluminação</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="main.js" defer></script>
-    <script  id="vertex-shader" type="notjs">
+
+    <!-- Vertex Shader para iluminação -->
+    <script id="vertex-shader" type="notjs">
         precision mediump float;
 
-        attribute vec3 position;
-        attribute vec3 color;
+        attribute vec3 position;   // posição do vértice
+        attribute vec3 color;      // cor base do vértice
+        attribute vec3 normal;     // normal do vértice
+
+        // Variais repassadas ao fragment shader
         varying vec3 vColor;
-        
-        uniform mat4 matrix;
-        
+        varying vec3 vNormal;
+        varying vec3 vSurfaceToLight;
+        varying vec3 vSurfaceToView;
+
+        // Matrizes / parâmetros para iluminação
+        uniform mat4 uMVP;            // model-view-projection (tudo junto)
+        uniform mat4 uModelMatrix;    // só a model matrix, usada p/ transformar normais
+        uniform vec3 uLightPosition;  // posição da luz no espaço de mundo
+        uniform vec3 uViewPosition;   // posição do observador (câmera) no espaço de mundo
+
         void main() {
+            // Envia cor base simples ao fragment
             vColor = color;
-            gl_Position = matrix * vec4(position, 1);
+
+            // Converte normal via (modelMatrix)^T (ou mat3), mas de forma simples:
+            vNormal = mat3(uModelMatrix) * normal;
+
+            // Calcula posição de mundo do vértice
+            vec3 worldPos = (uModelMatrix * vec4(position, 1.0)).xyz;
+
+
+            // Vetores de luz e de visão
+            vSurfaceToLight = uLightPosition - worldPos;
+            vSurfaceToView  = uViewPosition  - worldPos;
+
+            // Posição transformada p/ clip space
+            gl_Position = uMVP * vec4(position, 1.0);
         }
     </script>
-    <script  id="fragment-shader" type="notjs">
-        precision mediump float;
 
+    <!-- Fragment Shader para iluminação Blinn-Phong -->
+    <script id="fragment-shader" type="notjs">
+        precision mediump float;
+        
         varying vec3 vColor;
+        varying vec3 vNormal;
+        varying vec3 vSurfaceToLight;
+        varying vec3 vSurfaceToView;
+        
+        uniform float uShininess;
         
         void main() {
-            gl_FragColor = vec4(vColor, 1);
+            // Normaliza vetores
+            vec3 normal  = normalize(vNormal);
+            vec3 toLight = normalize(vSurfaceToLight);
+            vec3 toView  = normalize(vSurfaceToView);
+        
+            // Blinn–Phong: halfVector
+            vec3 halfVector = normalize(toLight + toView);
+        
+            // Cálculo difuso
+            float diffCoef = max(dot(normal, toLight), 0.0);
+        
+            // Cálculo especular (só faz sentido se há difuso)
+            float spec = 0.0;
+            if (diffCoef > 0.0) {
+                spec = pow(max(dot(normal, halfVector), 0.0), uShininess);
+            }
+        
+            // Luz ambiente (ex.: 30%)
+            vec3 ambient  = 0.3 * vColor;
+            vec3 diffuse  = diffCoef * vColor;
+            vec3 specular = spec * vec3(1.0);  // cor branca para o highlight
+        
+            // Combinação final
+            vec3 finalColor = ambient + diffuse + specular;
+            gl_FragColor = vec4(finalColor, 1.0);
         }
-    </script>
-    
+        </script>        
 </head>
 <body>
-  <canvas id="canvas" width="500" height="500"></canvas>
+    <div id="container" style="position: relative; display: inline-block;">
+        <div id="score" style="position: absolute; top: 10px; left: 10px; 
+             color: rgb(199, 141, 32); font-size: 20px; 
+             font-family: Arial, sans-serif; z-index: 10;">
+            Pontuação: 0
+        </div>
+
+        <canvas id="canvas" width="500" height="500"></canvas>
+    </div>
 </body>
 </html>
