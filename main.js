@@ -287,7 +287,7 @@ function main() {
     }
     
     // Muda a câmera automaticamente quando score > 30
-    if (score > 1) {
+    if (score > 30) {
       cameraAlternate = true;
       cameraPos = [5.0, 1.5, 0.3];
     } else {
