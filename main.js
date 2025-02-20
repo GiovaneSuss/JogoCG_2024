@@ -287,7 +287,7 @@ function main() {
     }
     
     // Muda a câmera automaticamente quando score > 30
-    if (score > 30) {
+    if (score > 1) {
       cameraAlternate = true;
       cameraPos = [5.0, 1.5, 0.3];
     } else {
@@ -323,16 +323,21 @@ function main() {
     // == 2) Desenhar o CUBO ==
     // Montar modelMatrix do cubo
     let cubeModel = m4.identity();
-    // Translada no eixo X e aplica o offset vertical
+    // Translada no eixo X e aplica o offset vertical (0.5 para posicionar a base do cubo acima do chão)
     smoothCubePositionX += (targetX - smoothCubePositionX) * lerpFactor;
     cubeModel = m4.translate(cubeModel, smoothCubePositionX, verticalOffset + 0.5, 0.0);
+
+    // Se a câmera estiver na visão lateral, gira o cubo 180° no eixo Y
+    if (cameraAlternate) {
+      cubeModel = m4.yRotate(cubeModel, degToRad(180));
+    }
 
     let cubeMVP = m4.multiply(viewProj, cubeModel);
 
     gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(cubeMVP));
     gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(cubeModel));
 
-    // Buffers do cubo
+    // Faz o bind dos buffers e desenha o cubo
     bindAttrib(cubePosBuffer, positionLoc, 3);
     bindAttrib(cubeColBuffer, colorLoc, 3);
     bindAttrib(cubeNorBuffer, normalLoc, 3);
