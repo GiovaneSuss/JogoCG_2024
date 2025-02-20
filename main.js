@@ -1,4 +1,3 @@
-
 function main() {
   let targetX = 0.0; // Posição alvo do cubo
   const canvas = document.querySelector("#canvas");
@@ -178,12 +177,25 @@ function main() {
   let smoothCubePositionX = 0.0;  // Posição suavizada do cubo
   const lerpFactor = 0.15; // Quanto menor, mais suave será a transição
 
+  let cameraAlternate = false;
+
   window.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowLeft' && currentIndex > 0) currentIndex--;
     else if (event.key === 'ArrowRight' && currentIndex < possibleX.length - 1) currentIndex++;
 
-    targetX = possibleX[currentIndex]; // Define a posição alvo (já estava no código)
-});
+    targetX = possibleX[currentIndex];
+
+    // espaço alterna câmera
+    if (event.code === 'Space') {
+      cameraAlternate = !cameraAlternate;
+      cameraPos[2] = cameraAlternate ? 10.0 : 5.0;
+    }
+
+    // p alterna pausa
+    if (event.key.toLowerCase() === 'p') {
+      paused = !paused;
+    }
+  });
 
   let score = 0;
   let gameOver = false;
@@ -208,6 +220,16 @@ function main() {
 
   // Função de desenho principal
   function drawScene() {
+    // recalcula viewmatrix
+    viewMatrix = set3dViewingMatrix(cameraPos, P_ref, V);
+
+    // mantém o loop pra não ter que recalcular a matriz de projeção
+    // nem precisar reiniciar o ciclo de animações do zero
+    if (paused) {
+      requestAnimationFrame(drawScene);
+      return;
+    }
+
     if (gameOver) return;
 
     // Atualiza pontuação
@@ -304,11 +326,6 @@ function main() {
         gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(obsMVP));
         gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(obsModel));
 
-        // Precisamos alterar a cor? Uma forma simples é criar outro buffer de cor 
-        // a cada obstáculo, mas aqui faremos set de cor "uniform" – 
-        // ou vamos ignorar e usar color no buffer? 
-        // Para simplicidade, podemos re-criar o colorBufferBase do obstáculo
-        // com a cor do 'obs.color'. Exemplo:
         let c = [];
         for (let i = 0; i < 6; i++) {
           c.push(obs.color[0], obs.color[1], obs.color[2]);
@@ -339,13 +356,20 @@ function main() {
   drawScene();
 }
 
+// instruções de início
+alert(
+  "Comandos do jogo:\n" +
+  " - Use as setas ← e → para se mover.\n" +
+  " - A 'Barra de Espaço' alterna a câmera.\n" +
+  " - Tecla 'P' pausa/retoma o jogo.\n" +
+  " - Chegue a 60 pontos para vencer!!!\n" +
+  "Boa sorte!"
+);
+
+let paused = false;
+
 function setCubeNormals() {
-  // Precisamos gerar as normais face por face.
-  // Exemplo (para um cubo simples):
-  // Para cada face, usar (0,0,1), (0,1,0), etc., repetindo 6 vezes por face.
-  // Se seu cubo é “decorado” (olhos, turbante etc.), 
-  // você terá que definir as normais manualmente nessas partes extras também.
-  // Abaixo, deixo só um exemplo para o paralelepípedo principal:
+  // gerar normais face por face
   const norms = [];
 
   // Front face (0,0,1) - 6 vértices
@@ -372,10 +396,6 @@ function setCubeNormals() {
   for (let i = 0; i < 6; i++) {
     norms.push(0, -1, 0);
   }
-
-  // E assim por diante para olho/boca/turbante. 
-  // Cada triângulo que você desenha deve ter uma normal coerente.
-  // Como exemplo, se “olho” fica na frente, normal seria (0,0,1), etc.
 
   return norms;
 }
