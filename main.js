@@ -218,18 +218,6 @@ function main() {
     }
     targetX = possibleX[currentIndex];
 
-    // "C" alterna câmera: default view vs. lateral view
-    if (event.key.toLowerCase() === 'c') {
-      cameraAlternate = !cameraAlternate;
-      if (cameraAlternate) {
-        // Lateral view: câmera posicionada à direita, visão lateral
-        cameraPos = [5.0, 1.5, 0.3];
-      } else {
-        // Retorna à visão original
-        cameraPos = [0.3, 1.5, 5.0];
-      }
-    }
-
     // "P" alterna pausa
     if (event.key.toLowerCase() === 'p') {
       paused = !paused;
