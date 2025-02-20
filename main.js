@@ -202,9 +202,20 @@ function main() {
   let cameraAlternate = false;
 
   window.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowLeft' && currentIndex > 0) currentIndex--;
-    else if (event.key === 'ArrowRight' && currentIndex < possibleX.length - 1) currentIndex++;
-
+    // câmera muda, movimentação muda
+    if (cameraAlternate) {
+      if (event.key === 'ArrowUp' && currentIndex > 0) {
+        currentIndex--;
+      } else if (event.key === 'ArrowDown' && currentIndex < possibleX.length - 1) {
+        currentIndex++;
+      }
+    } else {
+      if (event.key === 'ArrowLeft' && currentIndex > 0) {
+        currentIndex--;
+      } else if (event.key === 'ArrowRight' && currentIndex < possibleX.length - 1) {
+        currentIndex++;
+      }
+    }
     targetX = possibleX[currentIndex];
 
     // "C" alterna câmera: default view vs. lateral view
@@ -212,7 +223,7 @@ function main() {
       cameraAlternate = !cameraAlternate;
       if (cameraAlternate) {
         // Lateral view: câmera posicionada à direita, visão lateral
-        cameraPos = [-0.3, 1.5, 5.0];
+        cameraPos = [5.0, 1.5, 0.3];
       } else {
         // Retorna à visão original
         cameraPos = [0.3, 1.5, 5.0];
@@ -285,6 +296,15 @@ function main() {
         location.reload();
       }, 100);
       return;
+    }
+    
+    // Muda a câmera automaticamente quando score > 30
+    if (score > 30) {
+      cameraAlternate = true;
+      cameraPos = [5.0, 1.5, 0.3];
+    } else {
+      cameraAlternate = false;
+      cameraPos = [0.3, 1.5, 5.0];
     }
 
     // Limpa tela
@@ -399,9 +419,9 @@ function main() {
 // instruções de início
 alert(
   "Comandos do jogo:\n" +
-  " - Use as setas ← e → para se mover.\n" +
-  " - Tecla 'C' alterna a câmera.\n" +
+  " - Use as setas para se mover.\n" +
   " - Tecla 'P' pausa/retoma o jogo.\n" +
+  "Evite colidir com os obstáculos e fique atento!\n" +
   " - Chegue a 60 pontos para vencer!!!\n" +
   "Boa sorte!"
 );
