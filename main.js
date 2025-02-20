@@ -409,7 +409,8 @@ alert(
   "Comandos do jogo:\n" +
   " - Use as setas para se mover.\n" +
   " - Tecla 'P' pausa/retoma o jogo.\n" +
-  "Evite colidir com os obstáculos e fique atento!\n" +
+  " - Evite colidir com os obstáculos e fique atento!\n" +
+  " - Quando atingir 30 pontos, prepare-se para uma surpresa!\n" +
   " - Chegue a 60 pontos para vencer!!!\n" +
   "Boa sorte!"
 );
