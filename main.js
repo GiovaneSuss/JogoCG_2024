@@ -212,7 +212,7 @@ function main() {
       cameraAlternate = !cameraAlternate;
       if (cameraAlternate) {
         // Lateral view: câmera posicionada à direita, visão lateral
-        cameraPos = [5.0, 1.5, 0.3];
+        cameraPos = [-0.3, 1.5, 5.0];
       } else {
         // Retorna à visão original
         cameraPos = [0.3, 1.5, 5.0];
@@ -400,7 +400,7 @@ function main() {
 alert(
   "Comandos do jogo:\n" +
   " - Use as setas ← e → para se mover.\n" +
-  " - A 'Barra de Espaço' alterna a câmera.\n" +
+  " - Tecla 'C' alterna a câmera.\n" +
   " - Tecla 'P' pausa/retoma o jogo.\n" +
   " - Chegue a 60 pontos para vencer!!!\n" +
   "Boa sorte!"
