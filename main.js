@@ -64,9 +64,9 @@ function main() {
   }
 
   // === 1) Dados do CUBO ===
-  let cubePositions = setCubeVertices();  // (já tinha)
-  let cubeColors = setCubeColors();    // (já tinha)
-  let cubeNormals = setCubeNormals();   // (NOVO) precisa definir normais do cubo
+  let cubePositions = setCubeVertices();
+  let cubeColors = setCubeColors();
+  let cubeNormals = setCubeNormals();
 
   // Cria buffers do cubo
   const cubePosBuffer = createBuffer(cubePositions);
@@ -75,15 +75,19 @@ function main() {
 
   const cubeNumVerts = cubePositions.length / 3; // quantos vértices?
 
-  // === 2) Dados do CHÃO ===
-  let floorPositions = [
-    -3.0, -0.5, 1.0,
-    0.0, -0.5, 1.0,
-    0.0, -0.5, -30.0,
+  // Defina um offset vertical para mover os objetos para baixo
+  const verticalOffset = -2.0;
 
-    3.0, -0.5, 1.0,
-    0.0, -0.5, 1.0,
-    0.0, -0.5, -30.0,
+  // === 2) Dados do CHÃO ===
+  // Atualize as posições do chão para que comecem mais embaixo
+  let floorPositions = [
+    -3.0, verticalOffset, 1.0,
+    0.0, verticalOffset, 1.0,
+    0.0, verticalOffset, -30.0,
+
+    3.0, verticalOffset, 1.0,
+    0.0, verticalOffset, 1.0,
+    0.0, verticalOffset, -30.0,
   ];
   // Cores do chão (6 vértices)
   let floorColors = [
@@ -167,19 +171,18 @@ function main() {
 
   let obstacles = [];
   function createObstacle() {
-    const possiblePositionsX = [-1.5, 0, 1.5];
-    let targetX = possiblePositionsX[Math.floor(Math.random() * possiblePositionsX.length)];
-
-    // Gere cores aleatórias
+    const possiblePositionsX = [-2, 0, 1.5];
+    let lane = possiblePositionsX[Math.floor(Math.random() * possiblePositionsX.length)];
+    let targetX = lane * 1.5;  // Define a lane de destino
     let r = Math.random();
     let g = Math.random();
     let b = Math.random();
 
     obstacles.push({
       color: [r, g, b],
-      x: 0,
-      targetX: targetX * 1.5,
-      z: -25
+      x: 0,         // Sempre começa em 0
+      targetX: targetX,
+      z: -25        // Ponto inicial em z
     });
   }
 
@@ -190,7 +193,7 @@ function main() {
 
   // --- Interação para mover cubo ---
   let cubePositionX = 0.0;
-  const possibleX = [-1.5, 0, 1.5];
+  const possibleX = [-2, 0, 2];
   let currentIndex = 1;
 
   let smoothCubePositionX = 0.0;  // Posição suavizada do cubo
@@ -204,13 +207,19 @@ function main() {
 
     targetX = possibleX[currentIndex];
 
-    // espaço alterna câmera
-    if (event.code === 'Space') {
+    // "C" alterna câmera: default view vs. lateral view
+    if (event.key.toLowerCase() === 'c') {
       cameraAlternate = !cameraAlternate;
-      cameraPos[2] = cameraAlternate ? 10.0 : 5.0;
+      if (cameraAlternate) {
+        // Lateral view: câmera posicionada à direita, visão lateral
+        cameraPos = [5.0, 1.5, 0.3];
+      } else {
+        // Retorna à visão original
+        cameraPos = [0.3, 1.5, 5.0];
+      }
     }
 
-    // p alterna pausa
+    // "P" alterna pausa
     if (event.key.toLowerCase() === 'p') {
       paused = !paused;
     }
@@ -306,13 +315,9 @@ function main() {
     // == 2) Desenhar o CUBO ==
     // Montar modelMatrix do cubo
     let cubeModel = m4.identity();
-    // Translada no eixo X
-    // Interpola suavemente entre a posição atual e a posição alvo
+    // Translada no eixo X e aplica o offset vertical
     smoothCubePositionX += (targetX - smoothCubePositionX) * lerpFactor;
-
-    // Atualiza a matriz do cubo para refletir o movimento suavizado
-    cubeModel = m4.translate(cubeModel, smoothCubePositionX, 0.0, 0.0);
-
+    cubeModel = m4.translate(cubeModel, smoothCubePositionX, verticalOffset + 0.5, 0.0);
 
     let cubeMVP = m4.multiply(viewProj, cubeModel);
 
@@ -323,15 +328,13 @@ function main() {
     bindAttrib(cubePosBuffer, positionLoc, 3);
     bindAttrib(cubeColBuffer, colorLoc, 3);
     bindAttrib(cubeNorBuffer, normalLoc, 3);
-
-    // Desenha
     gl.drawArrays(gl.TRIANGLES, 0, cubeNumVerts);
 
     // == 3) Desenhar OBSTÁCULOS ==
     obstacles.forEach((obs, index) => {
       obs.z += 0.1;  // avança em Z
 
-// colisão?
+      // colisão?
       if (checkCollision(obs)) {
         gameOver = true;
         setTimeout(() => {
@@ -343,17 +346,18 @@ function main() {
       let minZ = -25, maxZ = 0;
       let scaleFactor = (obs.z - minZ) / (maxZ - minZ);
 
-      // Calcula x por interpolação
-      let progress = (obs.z + 50) / 50;
+      // Calcula a progressão com base no deslocamento de z
+      let progress = (obs.z + 25) / 30; // z varia de -25 a 5
       obs.x = progress * obs.targetX;
 
       // Remove obstáculo e cria outro
-      if (obs.z > 5) {
+      if (obs.z > 2) {
         obstacles.splice(index, 1);
         createObstacle();
       } else {
         let obsModel = m4.identity();
-        obsModel = m4.translate(obsModel, obs.x, 0, obs.z);
+        // Translada também no eixo Y usando verticalOffset
+        obsModel = m4.translate(obsModel, obs.x, verticalOffset, obs.z);
         obsModel = m4.scale(obsModel, scaleFactor, scaleFactor, scaleFactor);
 
         let obsMVP = m4.multiply(viewProj, obsModel);
