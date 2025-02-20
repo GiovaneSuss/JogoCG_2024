@@ -117,32 +117,54 @@ function main() {
   // Triângulo (duas vezes => 6 vértices) => um retângulo em shape de trapézio
   // Mas vamos simplificar só para exibir a ideia
   let obstacleBasePositions = [
-    -0.5, 0, 0,
-    0.5, 0, 0,
-    0.0, 1, 0,
+    // Base face
+    0.0, 0.0, 0.0,
+    1.0, 0.0, 0.0,
+    0.5, 0.0, 1.0,
 
-    -0.5, 0, 0,
-    0.5, 0, 0,
-    0.0, 1, 0,
+    // Side face 1
+    0.0, 0.0, 0.0,
+    0.5, 1.0, 0.5,
+    1.0, 0.0, 0.0,
+
+    // Side face 2
+    1.0, 0.0, 0.0,
+    0.5, 1.0, 0.5,
+    0.5, 0.0, 1.0,
+
+    // Side face 3
+    0.5, 0.0, 1.0,
+    0.5, 1.0, 0.5,
+    0.0, 0.0, 0.0,
   ];
-  // ex: cores aleatórias => iremos setar ao criar
-  let obstacleBaseColors = [
-    1, 0, 0, 1, 0, 0, 1, 0, 0,
-    1, 0, 0, 1, 0, 0, 1, 0, 0,
-  ];
-  // Normal apontando +Z ou -Y… Depende de como vc está desenhando.
-  // Digamos (0,0,1) se o triângulo “fica na vertical”. Ajuste conforme sua geometria real.
+
+  // gerar normais face por face
   let obstacleBaseNormals = [
-    0, 0, 1, 0, 0, 1, 0, 0, 1,
-    0, 0, 1, 0, 0, 1, 0, 0, 1,
+    // Base face (0,-1,0)
+    0, -1, 0, 0, -1, 0, 0, -1, 0,
+
+    // Side face 1 (0.5, 0.5, -0.5)
+    0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5,
+
+    // Side face 2 (0.5, 0.5, 0.5)
+    0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+
+    // Side face 3 (-0.5, 0.5, 0.5)
+    -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
   ];
+
+  // Define as cores-base para os obstáculos (12 vértices = 4 triângulos * 3 vértices)
+  let obstacleBaseColors = [];
+  for (let i = 0; i < 12; i++) {
+    // cor padrão branca ou qualquer cor uniforme
+    obstacleBaseColors.push(1.0, 1.0, 1.0);
+  }
 
   const obstaclePosBufferBase = createBuffer(obstacleBasePositions);
   const obstacleColBufferBase = createBuffer(obstacleBaseColors);
   const obstacleNorBufferBase = createBuffer(obstacleBaseNormals);
   const obstacleNumVerts = obstacleBasePositions.length / 3;
 
-  // Seu array "obstacles" permanece para controlar a posição z, x etc.
   let obstacles = [];
   function createObstacle() {
     const possiblePositionsX = [-1.5, 0, 1.5];
@@ -154,9 +176,6 @@ function main() {
     let b = Math.random();
 
     obstacles.push({
-      // reusamos buffers fixos, mas guardamos cor via uniform? 
-      // ou se quiser COR diferente, podemos mandar buffer? 
-      // Para simplicidade, guardamos aqui e "substituímos" no draw.
       color: [r, g, b],
       x: 0,
       targetX: targetX * 1.5,
@@ -201,7 +220,6 @@ function main() {
   let gameOver = false;
 
   function checkCollision(obstacle) {
-    // Lógica sua
     let cubeSize = 0.5, obstacleSize = 0.5;
     let zThreshold = 1.0;
     let xCollision = Math.abs(smoothCubePositionX - obstacle.x) < (cubeSize + obstacleSize);
@@ -218,6 +236,20 @@ function main() {
   let P_ref = [0, 1, 1], V = [0, 1, 0];
   let viewMatrix = set3dViewingMatrix(cameraPos, P_ref, V);
 
+  // Cria um div na tela para exibir "PAUSADO"
+  const pauseElement = document.createElement("div");
+  pauseElement.id = "pause-message";
+  pauseElement.textContent = "PAUSADO";
+  pauseElement.style.position = "absolute";
+  pauseElement.style.top = "50%";
+  pauseElement.style.left = "50%";
+  pauseElement.style.transform = "translate(-50%, -50%)";
+  pauseElement.style.color = "white";
+  pauseElement.style.fontSize = "48px";
+  pauseElement.style.fontWeight = "bold";
+  pauseElement.style.display = "none";
+  document.body.appendChild(pauseElement);
+
   // Função de desenho principal
   function drawScene() {
     // recalcula viewmatrix
@@ -226,8 +258,11 @@ function main() {
     // mantém o loop pra não ter que recalcular a matriz de projeção
     // nem precisar reiniciar o ciclo de animações do zero
     if (paused) {
+      pauseElement.style.display = "block";
       requestAnimationFrame(drawScene);
       return;
+    } else {
+      pauseElement.style.display = "none";
     }
 
     if (gameOver) return;
@@ -296,7 +331,7 @@ function main() {
     obstacles.forEach((obs, index) => {
       obs.z += 0.1;  // avança em Z
 
-      // colisão?
+// colisão?
       if (checkCollision(obs)) {
         gameOver = true;
         setTimeout(() => {
@@ -305,18 +340,18 @@ function main() {
         }, 100);
       }
 
-      // interpola X do obstáculo
+      let minZ = -25, maxZ = 0;
+      let scaleFactor = (obs.z - minZ) / (maxZ - minZ);
+
+      // Calcula x por interpolação
       let progress = (obs.z + 50) / 50;
       obs.x = progress * obs.targetX;
 
+      // Remove obstáculo e cria outro
       if (obs.z > 5) {
         obstacles.splice(index, 1);
         createObstacle();
       } else {
-        // Monta modelMatrix do obstáculo
-        let minZ = -25, maxZ = 0;
-        let scaleFactor = (obs.z - minZ) / (maxZ - minZ);
-
         let obsModel = m4.identity();
         obsModel = m4.translate(obsModel, obs.x, 0, obs.z);
         obsModel = m4.scale(obsModel, scaleFactor, scaleFactor, scaleFactor);
@@ -326,15 +361,16 @@ function main() {
         gl.uniformMatrix4fv(uMVP_Location, false, new Float32Array(obsMVP));
         gl.uniformMatrix4fv(uModelMatrix_Location, false, new Float32Array(obsModel));
 
+        // Cria buffer de cores para todos os 36 vértices
         let c = [];
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < obstacleNumVerts; i++) {
           c.push(obs.color[0], obs.color[1], obs.color[2]);
         }
-        // Substitui dados do buffer base
+        // Sobrescreve o buffer de cor base para este obstáculo
         gl.bindBuffer(gl.ARRAY_BUFFER, obstacleColBufferBase);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(c), gl.STATIC_DRAW);
 
-        // Agora faz bind
+        // Faz bind dos atributos
         bindAttrib(obstaclePosBufferBase, positionLoc, 3);
         bindAttrib(obstacleColBufferBase, colorLoc, 3);
         bindAttrib(obstacleNorBufferBase, normalLoc, 3);
